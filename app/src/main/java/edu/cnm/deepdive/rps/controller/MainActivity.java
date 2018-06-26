@@ -8,6 +8,7 @@ import android.widget.SeekBar;
 import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
 import edu.cnm.deepdive.rps.R;
+import edu.cnm.deepdive.rps.model.Breed;
 import edu.cnm.deepdive.rps.model.Terrain;
 import edu.cnm.deepdive.rps.view.TerrainView;
 import java.util.Random;
@@ -19,6 +20,9 @@ public class MainActivity extends AppCompatActivity {
   private static final int ITERATIONS_PER_TICK = 100;
   private static final int MIXING_THRESHOLD = 10;
   private static final int PAIRS_TO_MIX = 8;
+  private static final String RUNNING_KEY = "running";
+  private static final String ORDINALS_KEY = "ordinals";
+  private static final String RNG_KEY = "rng";
 
   private MenuItem startItem;
   private MenuItem stopItem;
@@ -27,19 +31,20 @@ public class MainActivity extends AppCompatActivity {
   private SeekBar mixingSlider;
   private TextView iterationCount;
   private boolean running;
+  private Random rng;
   private Terrain terrain;
   private TerrainView terrainView;
-  private final Object lock = new Object();
   private int mixingLevel;
   private int sleepInterval;
+  private Runner runner;
+  private final Object lock = new Object();
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
     setupControls();
-    setupTerrain();
-    stop();
+    setupTerrain(savedInstanceState);
   }
 
   @Override
@@ -108,23 +113,71 @@ public class MainActivity extends AppCompatActivity {
     mixingLevel = mixingSlider.getProgress();
   }
 
-  private void setupTerrain() {
-    terrain = new Terrain(TERRAIN_SIZE, new Random());
+  @Override
+  protected void onSaveInstanceState(Bundle outState) {
+    super.onSaveInstanceState(outState);
+    outState.putSerializable(RNG_KEY, rng);
+    outState.putBoolean(RUNNING_KEY, running);
+    Breed[][] cells = terrain.getCells();
+    byte[] ordinals = new byte[cells.length * cells[0].length]; // Breaks for a jagged array.
+    int width = cells[0].length;
+    for (int i = 0; i < cells.length; i++) {
+      int offset = i * width;
+      for (int j = 0; j < cells[i].length; j++) {
+        ordinals[offset + j] = (byte) cells[i][j].ordinal();
+      }
+    }
+    outState.putByteArray(ORDINALS_KEY, ordinals);
+  }
+
+  @Override
+  protected void onDestroy() {
+    stop();
+    super.onDestroy();
+  }
+
+  private void setupTerrain(Bundle savedInstanceState) {
+    byte[] ordinals = null;
+    if (savedInstanceState != null) {
+      rng = (Random) savedInstanceState.getSerializable(RNG_KEY);
+      running = savedInstanceState.getBoolean(RUNNING_KEY);
+      ordinals = savedInstanceState.getByteArray(ORDINALS_KEY);
+    } else {
+      rng = new Random();
+      running = false;
+    }
+    terrain = new Terrain(TERRAIN_SIZE, rng);
+    Breed[][] cells = terrain.getCells();
+    if (ordinals != null) {
+      Breed[] breeds = Breed.values();
+      int width = cells[0].length;
+      for (int i = 0; i < cells.length; i++) {
+        int offset = i * width;
+        for (int j = 0; j < cells[i].length; j++) {
+          cells[i][j] = breeds[ordinals[offset + j]];
+        }
+      }
+    }
     terrainView = findViewById(R.id.terrain_view);
-    terrainView.setCells(terrain.getCells());
+    terrainView.setCells(cells);
     draw();
+    if (running) {
+      start();
+    } else {
+      stop();
+    }
   }
 
   private void start() {
     running = true;
     invalidateOptionsMenu();
-    // TODO Create and start runner thread.
+    runner = new Runner();
+    runner.start();
   }
 
   private void stop() {
     running = false;
-    // TODO Set runner thread to null
-    invalidateOptionsMenu();
+    runner = null;
   }
 
   private void reset() {
@@ -140,7 +193,55 @@ public class MainActivity extends AppCompatActivity {
     }
   }
 
+  private class Runner extends Thread {
+
+    @Override
+    public void run() {
+      int mixingAccumulator = 0;
+      while (running) {
+        synchronized (lock) {
+          terrain.iterate(ITERATIONS_PER_TICK);
+          mixingAccumulator += mixingLevel;
+          if (mixingAccumulator >= MIXING_THRESHOLD) {
+            terrain.mix(PAIRS_TO_MIX);
+            mixingAccumulator %= MIXING_THRESHOLD;
+          }
+        }
+        if (!terrainView.isDrawing()) {
+          update(false);
+        }
+        try {
+          Thread.sleep(sleepInterval);
+        } catch (InterruptedException e) {
+          // DO NOTHING; DOESN'T MATTER!
+        }
+        if (terrain.isAbsorbed()) {
+          MainActivity.this.stop();
+        }
+      }
+      update(true);
+    }
+
+    private void update(final boolean stopping) {
+      runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          draw();
+          if (stopping) {
+            invalidateOptionsMenu();
+          }
+        }
+      });
+    }
+
+  }
+
 }
+
+
+
+
+
 
 
 
