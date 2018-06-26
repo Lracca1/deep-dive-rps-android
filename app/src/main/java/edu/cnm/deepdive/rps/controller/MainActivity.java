@@ -1,11 +1,13 @@
-package edu.cnm.deepdive.rps;
+package edu.cnm.deepdive.rps.controller;
 
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.widget.SeekBar;
+import android.widget.SeekBar.OnSeekBarChangeListener;
 import android.widget.TextView;
+import edu.cnm.deepdive.rps.R;
 import edu.cnm.deepdive.rps.model.Terrain;
 import edu.cnm.deepdive.rps.view.TerrainView;
 import java.util.Random;
@@ -13,6 +15,10 @@ import java.util.Random;
 public class MainActivity extends AppCompatActivity {
 
   private static final int TERRAIN_SIZE = 75;
+  private static final int MAX_SLEEP = 10;
+  private static final int ITERATIONS_PER_TICK = 100;
+  private static final int MIXING_THRESHOLD = 10;
+  private static final int PAIRS_TO_MIX = 8;
 
   private MenuItem startItem;
   private MenuItem stopItem;
@@ -24,6 +30,8 @@ public class MainActivity extends AppCompatActivity {
   private Terrain terrain;
   private TerrainView terrainView;
   private final Object lock = new Object();
+  private int mixingLevel;
+  private int sleepInterval;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -58,13 +66,13 @@ public class MainActivity extends AppCompatActivity {
     boolean handled = true;
     switch (item.getItemId()) {
       case R.id.action_start:
-        // TODO Start running
+        start();
         break;
       case R.id.action_stop:
-        // TODO Stop running
+        stop();
         break;
       case R.id.action_reset:
-        // TODO Reset terrain
+        reset();
         break;
       default:
         handled = super.onOptionsItemSelected(item);
@@ -76,7 +84,28 @@ public class MainActivity extends AppCompatActivity {
     speedSlider = findViewById(R.id.speed_slider);
     mixingSlider = findViewById(R.id.mixing_slider);
     iterationCount = findViewById(R.id.iteration_count);
-    // TODO Wire in sliders.
+    speedSlider.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+      @Override
+      public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+        sleepInterval = 1 + MAX_SLEEP - speedSlider.getProgress();
+      }
+      @Override
+      public void onStartTrackingTouch(SeekBar seekBar) { }
+      @Override
+      public void onStopTrackingTouch(SeekBar seekBar) { }
+    });
+    mixingSlider.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
+      @Override
+      public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+        mixingLevel = mixingSlider.getProgress();
+      }
+      @Override
+      public void onStartTrackingTouch(SeekBar seekBar) { }
+      @Override
+      public void onStopTrackingTouch(SeekBar seekBar) { }
+    });
+    sleepInterval = 1 + MAX_SLEEP - speedSlider.getProgress();
+    mixingLevel = mixingSlider.getProgress();
   }
 
   private void setupTerrain() {
