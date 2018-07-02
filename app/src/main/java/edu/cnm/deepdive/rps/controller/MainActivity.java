@@ -11,6 +11,7 @@ import edu.cnm.deepdive.rps.R;
 import edu.cnm.deepdive.rps.model.Breed;
 import edu.cnm.deepdive.rps.model.Terrain;
 import edu.cnm.deepdive.rps.view.TerrainView;
+import java.util.Arrays;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity {
@@ -22,7 +23,7 @@ public class MainActivity extends AppCompatActivity {
   private static final int PAIRS_TO_MIX = 8;
   private static final String RUNNING_KEY = "running";
   private static final String ORDINALS_KEY = "ordinals";
-  private static final String RNG_KEY = "rng";
+  private static final String COUNTS_KEY = "counts";
 
   private MenuItem startItem;
   private MenuItem stopItem;
@@ -85,6 +86,33 @@ public class MainActivity extends AppCompatActivity {
     return handled;
   }
 
+  @Override
+  protected void onSaveInstanceState(Bundle outState) {
+    super.onSaveInstanceState(outState);
+    Breed[][] cells = terrain.getCells();
+    byte[] ordinals = new byte[cells.length * cells[0].length]; // Breaks for a jagged array.
+    int[] counts = new int[Breed.values().length];
+    int width = cells[0].length;
+    synchronized (lock) {
+      for (int i = 0; i < cells.length; i++) {
+        int offset = i * width;
+        for (int j = 0; j < cells[i].length; j++) {
+          ordinals[offset + j] = (byte) cells[i][j].ordinal();
+        }
+      }
+      counts = Arrays.copyOf(terrain.getCounts(), counts.length);
+    }
+    outState.putBoolean(RUNNING_KEY, running);
+    outState.putByteArray(ORDINALS_KEY, ordinals);
+    outState.putIntArray(COUNTS_KEY, counts);
+  }
+
+  @Override
+  protected void onDestroy() {
+    stop();
+    super.onDestroy();
+  }
+
   private void setupControls() {
     speedSlider = findViewById(R.id.speed_slider);
     mixingSlider = findViewById(R.id.mixing_slider);
@@ -113,42 +141,17 @@ public class MainActivity extends AppCompatActivity {
     mixingLevel = mixingSlider.getProgress();
   }
 
-  @Override
-  protected void onSaveInstanceState(Bundle outState) {
-    super.onSaveInstanceState(outState);
-    outState.putSerializable(RNG_KEY, rng);
-    outState.putBoolean(RUNNING_KEY, running);
-    Breed[][] cells = terrain.getCells();
-    byte[] ordinals = new byte[cells.length * cells[0].length]; // Breaks for a jagged array.
-    int width = cells[0].length;
-    for (int i = 0; i < cells.length; i++) {
-      int offset = i * width;
-      for (int j = 0; j < cells[i].length; j++) {
-        ordinals[offset + j] = (byte) cells[i][j].ordinal();
-      }
-    }
-    outState.putByteArray(ORDINALS_KEY, ordinals);
-  }
-
-  @Override
-  protected void onDestroy() {
-    stop();
-    super.onDestroy();
-  }
-
   private void setupTerrain(Bundle savedInstanceState) {
+    boolean wasRunning;
     byte[] ordinals = null;
-    if (savedInstanceState != null) {
-      rng = (Random) savedInstanceState.getSerializable(RNG_KEY);
-      running = savedInstanceState.getBoolean(RUNNING_KEY);
-      ordinals = savedInstanceState.getByteArray(ORDINALS_KEY);
-    } else {
-      rng = new Random();
-      running = false;
-    }
+    int[] counts = null;
+    rng = new Random();
     terrain = new Terrain(TERRAIN_SIZE, rng);
     Breed[][] cells = terrain.getCells();
-    if (ordinals != null) {
+    if (savedInstanceState != null) {
+      wasRunning = savedInstanceState.getBoolean(RUNNING_KEY);
+      ordinals = savedInstanceState.getByteArray(ORDINALS_KEY);
+      counts = savedInstanceState.getIntArray(COUNTS_KEY);
       Breed[] breeds = Breed.values();
       int width = cells[0].length;
       for (int i = 0; i < cells.length; i++) {
@@ -157,11 +160,15 @@ public class MainActivity extends AppCompatActivity {
           cells[i][j] = breeds[ordinals[offset + j]];
         }
       }
+      System.arraycopy(counts, 0, terrain.getCounts(), 0, counts.length);
+    } else {
+      wasRunning = false;
+      terrain.reset();
     }
     terrainView = findViewById(R.id.terrain_view);
     terrainView.setCells(cells);
     draw();
-    if (running) {
+    if (wasRunning) {
       start();
     } else {
       stop();

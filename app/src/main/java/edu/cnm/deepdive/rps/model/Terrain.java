@@ -1,5 +1,6 @@
 package edu.cnm.deepdive.rps.model;
 
+import java.util.Arrays;
 import java.util.Random;
 
 /**
@@ -55,17 +56,17 @@ public class Terrain {
   public Terrain(int size, Random rng) {
     this.rng = rng;
     cells = new Breed[size][size];
+    counts = new int[Breed.values().length];
     totalCount = size * size;
-    reset();
   }
 
   /**
    * Re-initializes the lattice by populating each location with a
-   * randomly-selected instance of {@link Breed} and resetting the iterations
-   * counter to 0.
+   * randomly-selected instance of {@link Breed}, resetting the iterations
+   * counter to 0, and resetting the population counts to 0.
    */
   public void reset() {
-    counts = new int[Breed.values().length];
+    Arrays.fill(counts, 0);
     for (Breed[] row : cells) {
       for (int i = 0; i < row.length; i++) {
         Breed breed = Breed.random(this.rng);
@@ -154,6 +155,16 @@ public class Terrain {
    */
   public long getIterations() {
     return iterations;
+  }
+
+  /**
+   * Returns the population counts, indexed by the ordinal value of each {@link
+   * Breed}.
+   *
+   * @return  population counts.
+   */
+  public int[] getCounts() {
+    return counts;
   }
 
   /**
